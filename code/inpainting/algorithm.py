@@ -375,7 +375,7 @@ success, errorMessage = exampleBasedInpainting(self)
         # boundary whose pixels are on the zero side, we invert the 
         # mask and apply the contour-finder on that image
         unfilled = np.uint8(self._images['filled'] == 0)
-        _, boundaries, _ = cv.findContours(unfilled, cv.RETR_LIST, cv.CHAIN_APPROX_NONE)
+        _, boundaries = cv.findContours(unfilled, cv.RETR_LIST, cv.CHAIN_APPROX_NONE)
         self._boundaryIterator = iter(boundaries)
 
     # check if all pixels have been inpainted
