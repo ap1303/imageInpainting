@@ -73,7 +73,7 @@ def computeC(psiHatP=None, filledImage=None, confidenceImage=None):
     radius = psiHatP.radius()
 
     conf = copyutils.getWindow(confidenceImage, (row, col), radius)
-    filled = copyutils.getWindow(confidenceImage, (row, col), radius) / 255
+    filled = np.asarray(copyutils.getWindow(confidenceImage, (row, col), radius)) / 255
     mask = conf * filled
 
     c = np.sum(mask) / ((2 * radius + 1) ** 2)
@@ -119,16 +119,29 @@ def computeGradient(psiHatP=None, inpaintedImage=None, filledImage=None):
     gray_image = cv.cvtColor(inpaintedImage, cv.COLOR_BGR2GRAY)
     patch, valid = copyutils.getWindow(gray_image, (psiHatP.row(), psiHatP.col()), psiHatP.radius())
 
-    mask = patch * indicator_window
+    sobel_x = cv.Sobel(patch, cv.CV_64F, 1, 0, ksize=5)
+    sobel_y = cv.Sobel(patch, cv.CV_64F, 0, 1, ksize=5)
 
-    sobel_x = cv.Sobel(mask, cv.CV_64F, 1, 0, ksize=5)
-    sobel_y = cv.Sobel(mask, cv.CV_64F, 0, 1, ksize=5)
+    sobel_x_valid = sobel_x * indicator_window
+    sobel_y_valid = sobel_y * indicator_window
 
-    magnitude = np.sqrt(sobel_x ** 2 + sobel_y ** 2)
+    odd_rows = indicator_window[0:9]
+    even_rows = indicator_window[2:]
+    correct = np.dot(odd_rows, even_rows.T)
+    correct = np.array([0] + [correct[i][i] for i in range(9)] + [0])
+    sobel_x_valid *= np.uint8(correct == 11)[:, np.newaxis]
+
+    odd_col = indicator_window[:][0:9]
+    even_col = indicator_window[:][2:]
+    correct = np.dot(odd_col.T, even_col)
+    correct = np.array([0] + [correct[i][i] for i in range(9)] + [0])
+    sobel_y_valid *= np.uint8(correct == 11)[:, np.newaxis]
+
+    magnitude = np.sqrt(sobel_x_valid ** 2 + sobel_y_valid ** 2)
     index_1, index_2 = np.unravel_index(magnitude.argmax(), magnitude.shape)
 
-    Dy = sobel_y[index_1][index_2]
-    Dx = sobel_x[index_1][index_2]
+    Dy = sobel_y_valid[index_1][index_2]
+    Dx = sobel_x_valid[index_1][index_2]
 
     return Dy, Dx
 
@@ -177,17 +190,56 @@ def computeNormal(psiHatP=None, filledImage=None, fillFront=None):
 
     front_window, front_fill = copyutils.getWindow(fillFront, (psiHatP.row(), psiHatP.col()), psiHatP.radius())
     front_window = front_window / 255
-    front = front_window * psiHatP.pixels()
 
-    finite_diff_vertical = np.gradient(front, axis=0)
-    slope_vertical = finite_diff_vertical[psiHatP.row()][psiHatP.col()]
+    for i in range(front_window.shape[0]):
+        for j in range(front_window.shape[1]):
+            if front_window[i][j] == 1:
+                front_window[i - 1][j] = 1
+                front_window[i][j] = 0
 
-    finite_diff_horizontal = np.gradient(front, axis=1)
-    slope_horizontal = finite_diff_horizontal[psiHatP.row()][psiHatP.col()]
+    g_image = cv.cvtColor(psiHatP.pixels(), cv.COLOR_BGR2GRAY)
 
-    magnitude = (slope_vertical ** 2 + slope_horizontal ** 2) ** 0.5
+    front = front_window * g_image
 
-    Nx = - slope_vertical / magnitude
-    Ny = slope_horizontal / magnitude
+    nonzero_x, nonzero_y = np.nonzero(front)
+
+    if nonzero_y.shape[0] > 1:
+        distance = np.sqrt(np.multiply(nonzero_x - psiHatP.radius() / 2, nonzero_x - psiHatP.radius() / 2) +
+                           np.multiply(nonzero_y - psiHatP.radius() / 2, nonzero_y - psiHatP.radius() / 2))
+        nearest = distance[distance.argmin()]
+        nearest_index = np.unravel_index(distance.argmin(), distance.shape)
+        nearest_x, nearest_y = nonzero_x[nearest_index], nonzero_y[nearest_index]
+
+        remainder_x = np.delete(nonzero_x, distance.argmin())
+        remainder_y = np.delete(nonzero_y, distance.argmin())
+        remainder = np.sqrt(np.multiply(remainder_x - psiHatP.radius() / 2,
+                                        remainder_x - psiHatP.radius() / 2) +
+                            np.multiply(remainder_y - psiHatP.radius() / 2,
+                                        remainder_y - psiHatP.radius() / 2))
+        second_nearest = remainder[remainder.argmin()]
+        second_index = np.unravel_index(remainder.argmin(), remainder.shape)
+        second_x, second_y = remainder_x[second_index], remainder_y[second_index]
+
+        if nearest_x != second_x:
+            slope_horizontal = (second_nearest - nearest) / (second_x - nearest_x) if nearest_x < second_x else \
+                               (nearest - second_nearest) / (second_x - nearest_x)
+        else:
+            slope_horizontal = 0
+
+        if nearest_y != second_y:
+            slope_vertical = (second_nearest - nearest) / (second_y - nearest_y) if nearest_y < second_y else \
+                             (nearest - second_nearest) / (second_y - nearest_y)
+        else:
+            slope_vertical = 0
+
+        magnitude = (slope_vertical ** 2 + slope_horizontal ** 2) ** 0.5
+
+        if magnitude == 0:
+            Nx = Ny = 0
+        else:
+            Nx = - slope_vertical / magnitude
+            Ny = slope_horizontal / magnitude
+    else:
+        Nx = Ny = 0
 
     return Ny, Nx

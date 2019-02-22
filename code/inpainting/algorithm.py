@@ -166,7 +166,7 @@ success, errorMessage = exampleBasedInpainting(self)
         self.setPatchRadius(self.patchRadius())
         self.debug.setImviewer(imviewer)
 
-        if (self.changedInput() or self.changedPatchRadius()):
+        if self.changedInput() or self.changedPatchRadius():
 
             # 
             # The input has changed so we re-initialize all images used by
@@ -174,8 +174,8 @@ success, errorMessage = exampleBasedInpainting(self)
             
             self._images['filled'] = np.uint8(self._images['alpha'] > 0)*255
             self._images['inpainted'] = self._images['source'].copy()
-            for i in range(0,3):
-                self._images['inpainted'][:,:,i] *= (self._images['filled']>0)
+            for i in range(0, 3):
+                self._images['inpainted'][:, :, i] *= (self._images['filled'] > 0)
         
             #
             # Step 1a,b: Identify the fill front deltaOmega and compute
@@ -184,8 +184,7 @@ success, errorMessage = exampleBasedInpainting(self)
             self.computeBoundaries()
             self.confidenceInitialize()
             self.patchDBInitialize()
-        
-        
+
         self.iterationsInit()
         done = False
 
@@ -239,7 +238,7 @@ success, errorMessage = exampleBasedInpainting(self)
             self._psiHatP = self.fillFrontGetHighestPriorityPatch()
             
             if self.debug.verbose():
-                print 'current patch: (%d,%d) [priority=%g]'%(
+                print 'current patch: (%d,%d) [priority=%g]' % (
                         self._psiHatP.row(),
                         self._psiHatP.col(),
                         self._psiHatP.P()
@@ -375,7 +374,7 @@ success, errorMessage = exampleBasedInpainting(self)
         # boundary whose pixels are on the zero side, we invert the 
         # mask and apply the contour-finder on that image
         unfilled = np.uint8(self._images['filled'] == 0)
-        _, boundaries = cv.findContours(unfilled, cv.RETR_LIST, cv.CHAIN_APPROX_NONE)
+        _, boundaries, _ = cv.findContours(unfilled, cv.RETR_LIST, cv.CHAIN_APPROX_NONE)
         self._boundaryIterator = iter(boundaries)
 
     # check if all pixels have been inpainted
@@ -393,7 +392,7 @@ success, errorMessage = exampleBasedInpainting(self)
         self._images['fillFront'] = \
             np.zeros_like(self._images['filled'], dtype=np.uint8)
         self._images['fillFront'] = \
-            cv.drawContours(self._images['fillFront'],boundaryPixels,-1,255)
+            cv.drawContours(self._images['fillFront'], boundaryPixels, -1, 255)
         
         # initialize the priority queue with all points on the fill front
         self._deltaOmega = Queue.PriorityQueue()
@@ -401,11 +400,11 @@ success, errorMessage = exampleBasedInpainting(self)
             col, row = colrow[0]
             
             # create a new patch object centered at the pixel
-            p = PSI((row,col), self._w, 
-                      image=self._images['inpainted'], 
-                      filled=self._images['filled'],
-                      confidence=self._images['confidence'],
-                      fillFront=self._images['fillFront'])
+            p = PSI((row, col), self._w,
+                    image=self._images['inpainted'],
+                    filled=self._images['filled'],
+                    confidence=self._images['confidence'],
+                    fillFront=self._images['fillFront'])
             self._deltaOmega.put(p)
             
     # get the lowest-priority patch from the queue
@@ -447,7 +446,7 @@ success, errorMessage = exampleBasedInpainting(self)
 
     # initialize the image where patch confidences are stored
     def confidenceInitialize(self):
-        self._images['confidence'] = 255.0*(self._images['filled'] > 0)
+        self._images['confidence'] = 255.0 * (self._images['filled'] > 0)
         
     # once the confidence of a patch on the fill front has been computed,
     # we assign that confidence to all unfilled pixels in the patch
